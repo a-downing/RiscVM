@@ -329,35 +329,104 @@ class RISCVSystem {
 
     void CSRRW() {
         int temp = Regs[_fields.rs1_uimm];
-        if(_fields.rd_imm5 != 0) _csrs.read(_imm, ref Regs[_fields.rd_imm5]);
-        if(_fields.rs1_uimm != 0) _csrs.write(_imm, temp);
+        
+        if(_fields.rd_imm5 != 0) {
+            if(!_csrs.read(_imm, ref Regs[_fields.rd_imm5])) {
+                Exception(McauseException.CODE_EX_ILLEGAL_INST);
+                return;
+            }
+        }
+        
+        if(_fields.rs1_uimm != 0) {
+            if(!_csrs.write(_imm, temp)) {
+                Exception(McauseException.CODE_EX_ILLEGAL_INST);
+                return;
+            }
+        }
     }
 
     void CSRRS() {
         int temp = Regs[_fields.rs1_uimm];
-        if(_fields.rd_imm5 != 0) _csrs.read(_imm, ref Regs[_fields.rd_imm5]);
-        if(_fields.rs1_uimm != 0) _csrs.set(_imm, temp);
+
+        if(_fields.rd_imm5 != 0) {
+            if(!_csrs.read(_imm, ref Regs[_fields.rd_imm5])) {
+                Exception(McauseException.CODE_EX_ILLEGAL_INST);
+                return;
+            }
+        }
+
+        if(_fields.rs1_uimm != 0) {
+            if(!_csrs.set(_imm, temp)) {
+                Exception(McauseException.CODE_EX_ILLEGAL_INST);
+                return;
+            }
+        }
     }
 
     void CSRRC() {
         int temp = Regs[_fields.rs1_uimm];
-        if(_fields.rd_imm5 != 0) _csrs.read(_imm, ref Regs[_fields.rd_imm5]);
-        if(_fields.rs1_uimm != 0) _csrs.clear(_imm, temp);
+
+        if(_fields.rd_imm5 != 0) {
+            if(!_csrs.read(_imm, ref Regs[_fields.rd_imm5])) {
+                Exception(McauseException.CODE_EX_ILLEGAL_INST);
+                return;
+            }
+        }
+
+        if(_fields.rs1_uimm != 0) {
+            if(!_csrs.clear(_imm, temp)) {
+                Exception(McauseException.CODE_EX_ILLEGAL_INST);
+                return;
+            }
+        }
     }
 
     void CSRRWI() {
-        if(_fields.rd_imm5 != 0) _csrs.read(_imm, ref Regs[_fields.rd_imm5]);
-        if(_fields.rs1_uimm != 0) _csrs.write(_imm, _fields.rs1_uimm);
+        if(_fields.rd_imm5 != 0) {
+            if(!_csrs.read(_imm, ref Regs[_fields.rd_imm5])) {
+                Exception(McauseException.CODE_EX_ILLEGAL_INST);
+                return;
+            }
+        }
+
+        if(_fields.rs1_uimm != 0) {
+            if(!_csrs.write(_imm, _fields.rs1_uimm)) {
+                Exception(McauseException.CODE_EX_ILLEGAL_INST);
+                return;
+            }
+        }
     }
 
     void CSRRSI() {
-        if(_fields.rd_imm5 != 0) _csrs.read(_imm, ref Regs[_fields.rd_imm5]);
-        if(_fields.rs1_uimm != 0) _csrs.set(_imm, _fields.rs1_uimm);
+        if(_fields.rd_imm5 != 0) {
+            if(!_csrs.read(_imm, ref Regs[_fields.rd_imm5])) {
+                Exception(McauseException.CODE_EX_ILLEGAL_INST);
+                return;
+            }
+        }
+
+        if(_fields.rs1_uimm != 0) {
+            if(!_csrs.set(_imm, _fields.rs1_uimm)) {
+                Exception(McauseException.CODE_EX_ILLEGAL_INST);
+                return;
+            }
+        }
     }
 
     void CSRRCI() {
-        if(_fields.rd_imm5 != 0) _csrs.read(_imm, ref Regs[_fields.rd_imm5]);
-        if(_fields.rs1_uimm != 0) _csrs.clear(_imm, _fields.rs1_uimm);
+        if(_fields.rd_imm5 != 0) {
+            if(!_csrs.read(_imm, ref Regs[_fields.rd_imm5])) {
+                Exception(McauseException.CODE_EX_ILLEGAL_INST);
+                return;
+            }
+        }
+
+        if(_fields.rs1_uimm != 0) {
+            if(!_csrs.clear(_imm, _fields.rs1_uimm)) {
+                Exception(McauseException.CODE_EX_ILLEGAL_INST);
+                return;
+            }
+        }
     }
 
     void MUL() {

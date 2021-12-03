@@ -92,7 +92,7 @@ class DefaultLogger : Logger {
                 Log($"CSR: read {Enum.GetName(typeof(CSRAddress), addr)} = 0x{value.ToString("X8")}");
                 break;
             case CSRs.AccessType.WRITE:
-                Log($"CSR: write {Enum.GetName(typeof(CSRAddress), addr)} = 0x{value.ToString("X8")}");
+                Log($"CSR: write {Enum.GetName(typeof(CSRAddress), addr)} = 0x{value.ToString("X8")} -> {outcome.ToString("X8")}");
                 break;
             case CSRs.AccessType.SET:
                 Log($"CSR: set {Enum.GetName(typeof(CSRAddress), addr)} mask 0x{value.ToString("X8")} -> {outcome.ToString("X8")}");
