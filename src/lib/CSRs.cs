@@ -3,7 +3,7 @@ namespace RiscVM;
 using static CSRAddress;
 
 class CSRs {
-    public int _invalid;
+    private int _invalid;
     public int mstatus = 0;
     public int mtvec = 0;
     public int mcause = 0;
