@@ -433,8 +433,19 @@ class RISCVSystem {
         Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] * Regs[_fields.rs2];
     }
 
+    void MULH() {
+        long product = (long)Regs[_fields.rs1_uimm] * (long)Regs[_fields.rs2];
+        Regs[_fields.rd_imm5] = (int)(product >> 32);
+    }
+
+    void MULHSU() {
+        long product = (long)Regs[_fields.rs1_uimm] * (long)(uint)Regs[_fields.rs2];
+        Regs[_fields.rd_imm5] = (int)(product >> 32);
+    }
+
     void MULHU() {
-        Regs[_fields.rd_imm5] = (int)(((ulong)(Regs[_fields.rs1_uimm]) * (ulong)(Regs[_fields.rs2])) >> 32);
+        ulong product = (ulong)(uint)Regs[_fields.rs1_uimm] * (ulong)(uint)Regs[_fields.rs2];
+        Regs[_fields.rd_imm5] = (int)(product >> 32);
     }
 
     void DIV() {
@@ -841,10 +852,10 @@ class RISCVSystem {
                                 Exec(MUL, IType.R);
                                 break;
                             case 0b001:
-                                //Exec(MULH, IType.R);
+                                Exec(MULH, IType.R);
                                 break;
                             case 0b010:
-                                //Exec(MULHSU, IType.R);
+                                Exec(MULHSU, IType.R);
                                 break;
                             case 0b011:
                                 Exec(MULHU, IType.R);
