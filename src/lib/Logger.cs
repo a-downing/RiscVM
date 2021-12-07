@@ -2,7 +2,7 @@ namespace RiscVM;
 
 interface Logger {
     public void AcceptSystem(RISCVSystem sys);
-    public void LogInstruction(IType type, string name, InstructionFields fields, int imm);
+    public void LogInstruction(Instruction inst);
     public void LogLoad(int size, int addr, int[] regs, int reg, bool signExtend, bool postLoad);
     public void LogStore(int size, int addr, int[] regs, int reg);
     public void LogException(McauseException cause);
@@ -26,33 +26,34 @@ class DefaultLogger : Logger {
         }
     }
 
-    public void LogInstruction(IType type, string name, InstructionFields fields, int imm) {
+    public void LogInstruction(Instruction inst) {
         _pc = _sys?.Pc ?? -1;
+        var name = inst.Handler!.Method.Name;
 
-        if(name == "addi" && fields.rd_imm5 == 0 && fields.rs1_uimm == 0 && imm == 0) {
+        if(name == "addi" && inst.Rd == 0 && inst.Rs1 == 0 && inst.Imm == 0) {
             Log($"nop");
             _pc = -1;
             return;
         }
 
-        switch(type) {
+        switch(inst.Type) {
             case IType.R:
-                Log($"{name} {((Register)fields.rd_imm5).ToString()}, {((Register)fields.rs1_uimm).ToString()}, {((Register)fields.rs2).ToString()}");
+                Log($"{name} {((Register)inst.Rd).ToString()}, {((Register)inst.Rs1).ToString()}, {((Register)inst.Rs2).ToString()}");
                 break;
             case IType.I:
-                Log($"{name} {((Register)fields.rd_imm5).ToString()}, {((Register)fields.rs1_uimm).ToString()}, {imm}");
+                Log($"{name} {((Register)inst.Rd).ToString()}, {((Register)inst.Rs1).ToString()}, {inst.Imm}");
                 break;
             case IType.S:
-                Log($"{name} {((Register)fields.rs2).ToString()}, {imm}({((Register)fields.rs1_uimm).ToString()})");
+                Log($"{name} {((Register)inst.Rs2).ToString()}, {inst.Imm}({((Register)inst.Rs1).ToString()})");
                 break;
             case IType.B:
-                Log($"{name} {((Register)fields.rs1_uimm).ToString()}, {((Register)fields.rs2).ToString()}, {imm}(0x{(_pc + imm).ToString("X")})");
+                Log($"{name} {((Register)inst.Rs1).ToString()}, {((Register)inst.Rs2).ToString()}, {inst.Imm}(0x{(_pc + inst.Imm).ToString("X")})");
                 break;
             case IType.U:
-                Log($"{name} {((Register)fields.rd_imm5).ToString()}, 0x{imm.ToString("X")}");
+                Log($"{name} {((Register)inst.Rd).ToString()}, 0x{inst.Imm.ToString("X")}");
                 break;
             case IType.J:
-                Log($"{name} {((Register)fields.rd_imm5).ToString()}, {imm}(0x{(_pc + imm).ToString("X")})");
+                Log($"{name} {((Register)inst.Rd).ToString()}, {inst.Imm}(0x{(_pc + inst.Imm).ToString("X")})");
                 break;
         }
 
@@ -65,13 +66,13 @@ class DefaultLogger : Logger {
         if(!postLoad) {
             Log($"Load(size: {size}, addr: {addr.ToString("X8")}, reg: {reg.ToString("X8")}, signExtend: {signExtend})");
         } else {
-            Log($"Loaded {reg}");
+            Log($"Loaded {reg.ToString("X8")}");
         }
     }
 
     public void LogStore(int size, int addr, int[] regs, int reg) {
         reg = regs[reg];
-        Log($"Store(size: {size}, addr: {addr.ToString("X8")}, reg value: {reg.ToString("X8")})");
+        Log($"Store(size: {size}, addr: {addr.ToString("X8")}, reg: {reg.ToString("X8")})");
     }
 
     public void LogException(McauseException cause) {

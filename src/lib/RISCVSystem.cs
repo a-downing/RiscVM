@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace RiscVM;
 
@@ -23,16 +24,31 @@ struct InstructionFields {
     public byte rs3;
 }
 
+
+class Instruction {
+    public Action Handler;
+    public IType Type;
+    public byte Rd;
+    public byte Rs1;
+    public byte Rs2;
+    public int Imm;
+
+    public Instruction(Action handler) {
+        Handler = handler;
+    }
+}
+
 class RISCVSystem {
     const int ALIGNMENT = 16;
 
     public int Pc;
     public int[] Regs = new int[32];
     public byte[] Memory = new byte[0];
+    public Instruction[] Instructions = new Instruction[0];
+    Instruction _curr = new Instruction(() => {});
 
     int _pcNext, _stackEnd, _heapEnd;
     InstructionFields _fields;
-    int _imm;
     CSRs _csrs = new CSRs();
     bool _handled;
     long _cycles = 0;
@@ -101,6 +117,13 @@ class RISCVSystem {
         _stackEnd = (Memory.Length + stackSize + ALIGNMENT) & ~(ALIGNMENT - 1);
         _heapEnd = (_stackEnd + heapSize + ALIGNMENT) & ~(ALIGNMENT - 1);
         Array.Resize(ref Memory, _stackEnd);
+
+        Instructions = new Instruction[memory.Length / 4];
+
+        for(int i = 0; i < memory.Length; i += 4) {
+            int inst = BitConverter.ToInt32(Memory, i);
+            Decode(inst, i / 4);
+        }
     }
 
     public void Reset(int pc) {
@@ -113,165 +136,165 @@ class RISCVSystem {
     }
 
     void LUI() {
-        Regs[_fields.rd_imm5] = _imm << 12;
+        Regs[_curr.Rd] = _curr.Imm << 12;
     }
 
     void AUIPC() {
-        Regs[_fields.rd_imm5] = Pc + (_imm << 12);
+        Regs[_curr.Rd] = Pc + (_curr.Imm << 12);
     }
 
     void JAL() {
-        Regs[_fields.rd_imm5] = Pc + 4;
-        _pcNext = Pc + _imm;
+        Regs[_curr.Rd] = Pc + 4;
+        _pcNext = Pc + _curr.Imm;
     }
 
     void JALR() {
-        Regs[_fields.rd_imm5] = Pc + 4;
-        _pcNext = Regs[_fields.rs1_uimm] + _imm;
+        Regs[_curr.Rd] = Pc + 4;
+        _pcNext = Regs[_curr.Rs1] + _curr.Imm;
     }
 
     void BEQ() {
-        if(Regs[_fields.rs1_uimm] == Regs[_fields.rs2]) {
-            _pcNext = Pc + _imm;
+        if(Regs[_curr.Rs1] == Regs[_curr.Rs2]) {
+            _pcNext = Pc + _curr.Imm;
         }
     }
 
     void BNE() {
-        if(Regs[_fields.rs1_uimm] != Regs[_fields.rs2]) {
-            _pcNext = Pc + _imm;
+        if(Regs[_curr.Rs1] != Regs[_curr.Rs2]) {
+            _pcNext = Pc + _curr.Imm;
         }
     }
 
     void BLT() {
-        if(Regs[_fields.rs1_uimm] < Regs[_fields.rs2]) {
-            _pcNext = Pc + _imm;
+        if(Regs[_curr.Rs1] < Regs[_curr.Rs2]) {
+            _pcNext = Pc + _curr.Imm;
         }
     }
 
     void BGE() {
-        if(Regs[_fields.rs1_uimm] >= Regs[_fields.rs2]) {
-            _pcNext = Pc + _imm;
+        if(Regs[_curr.Rs1] >= Regs[_curr.Rs2]) {
+            _pcNext = Pc + _curr.Imm;
         }
     }
 
     void BLTU() {
-        if((uint)Regs[_fields.rs1_uimm] < (uint)Regs[_fields.rs2]) {
-            _pcNext = Pc + _imm;
+        if((uint)Regs[_curr.Rs1] < (uint)Regs[_curr.Rs2]) {
+            _pcNext = Pc + _curr.Imm;
         }
     }
 
     void BGEU() {
-        if((uint)Regs[_fields.rs1_uimm] >= (uint)Regs[_fields.rs2]) {
-            _pcNext = Pc + _imm;
+        if((uint)Regs[_curr.Rs1] >= (uint)Regs[_curr.Rs2]) {
+            _pcNext = Pc + _curr.Imm;
         }
     }
 
     void LB() {
-        Load(1, Regs[_fields.rs1_uimm] + _imm, Regs, _fields.rd_imm5, true);
+        Load(1, Regs[_curr.Rs1] + _curr.Imm, Regs, _curr.Rd, true);
     }
 
     void LH() {
-        Load(2, Regs[_fields.rs1_uimm] + _imm, Regs, _fields.rd_imm5, true);
+        Load(2, Regs[_curr.Rs1] + _curr.Imm, Regs, _curr.Rd, true);
     }
 
     void LW() {
-        Load(4, Regs[_fields.rs1_uimm] + _imm, Regs, _fields.rd_imm5, false);
+        Load(4, Regs[_curr.Rs1] + _curr.Imm, Regs, _curr.Rd, false);
     }
 
     void LBU() {
-        Load(1, Regs[_fields.rs1_uimm] + _imm, Regs, _fields.rd_imm5, false);
+        Load(1, Regs[_curr.Rs1] + _curr.Imm, Regs, _curr.Rd, false);
     }
 
     void LHU() {
-        Load(2, Regs[_fields.rs1_uimm] + _imm, Regs, _fields.rd_imm5, false);
+        Load(2, Regs[_curr.Rs1] + _curr.Imm, Regs, _curr.Rd, false);
     }
 
     void SB() {
-        Store(1, Regs[_fields.rs1_uimm] + _imm, Regs, _fields.rs2);
+        Store(1, Regs[_curr.Rs1] + _curr.Imm, Regs, _curr.Rs2);
     }
 
     void SH() {
-        Store(2, Regs[_fields.rs1_uimm] + _imm, Regs, _fields.rs2);
+        Store(2, Regs[_curr.Rs1] + _curr.Imm, Regs, _curr.Rs2);
     }
 
     void SW() {
-        Store(4, Regs[_fields.rs1_uimm] + _imm, Regs, _fields.rs2);
+        Store(4, Regs[_curr.Rs1] + _curr.Imm, Regs, _curr.Rs2);
     }
 
     void ADDI() {
-        Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] + _imm;
+        Regs[_curr.Rd] = Regs[_curr.Rs1] + _curr.Imm;
     }
 
     void SLTI() {
-        Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] < _imm ? 1 : 0;
+        Regs[_curr.Rd] = Regs[_curr.Rs1] < _curr.Imm ? 1 : 0;
     }
 
     void SLTIU() {
-        Regs[_fields.rd_imm5] = (uint)Regs[_fields.rs1_uimm] < (uint)_imm ? 1 : 0;
+        Regs[_curr.Rd] = (uint)Regs[_curr.Rs1] < (uint)_curr.Imm ? 1 : 0;
     }
 
     void XORI() {
-        Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] ^ _imm;
+        Regs[_curr.Rd] = Regs[_curr.Rs1] ^ _curr.Imm;
     }
 
     void ORI() {
-        Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] | _imm;
+        Regs[_curr.Rd] = Regs[_curr.Rs1] | _curr.Imm;
     }
 
     void ANDI() {
-        Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] & _imm;
+        Regs[_curr.Rd] = Regs[_curr.Rs1] & _curr.Imm;
     }
 
     void SLLI() {
-        Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] << (_imm & 0b11111);
+        Regs[_curr.Rd] = Regs[_curr.Rs1] << (_curr.Imm & 0b11111);
     }
 
     void SRLI() {
-        Regs[_fields.rd_imm5] = (int)((uint)Regs[_fields.rs1_uimm] >> (_imm & 0b11111));
+        Regs[_curr.Rd] = (int)((uint)Regs[_curr.Rs1] >> (_curr.Imm & 0b11111));
     }
 
     void SRAI() {
-        Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] >> (_imm & 0b11111);
+        Regs[_curr.Rd] = Regs[_curr.Rs1] >> (_curr.Imm & 0b11111);
     }
 
     void ADD() {
-        Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] + Regs[_fields.rs2];
+        Regs[_curr.Rd] = Regs[_curr.Rs1] + Regs[_curr.Rs2];
     }
 
     void SLL() {
-        Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] << (Regs[_fields.rs2] & 0b11111);
+        Regs[_curr.Rd] = Regs[_curr.Rs1] << (Regs[_curr.Rs2] & 0b11111);
     }
 
     void SLT() {
-        Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] < Regs[_fields.rs2] ? 1 : 0;
+        Regs[_curr.Rd] = Regs[_curr.Rs1] < Regs[_curr.Rs2] ? 1 : 0;
     }
 
     void SLTU() {
-        Regs[_fields.rd_imm5] = (uint)Regs[_fields.rs1_uimm] < (uint)Regs[_fields.rs2] ? 1 : 0;
+        Regs[_curr.Rd] = (uint)Regs[_curr.Rs1] < (uint)Regs[_curr.Rs2] ? 1 : 0;
     }
 
     void XOR() {
-        Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] ^ Regs[_fields.rs2];
+        Regs[_curr.Rd] = Regs[_curr.Rs1] ^ Regs[_curr.Rs2];
     }
 
     void SRL() {
-        Regs[_fields.rd_imm5] = (int)((uint)Regs[_fields.rs1_uimm] >> (Regs[_fields.rs2] & 0b11111));
+        Regs[_curr.Rd] = (int)((uint)Regs[_curr.Rs1] >> (Regs[_curr.Rs2] & 0b11111));
     }
 
     void SRA() {
-        Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] >> (Regs[_fields.rs2] & 0b11111);
+        Regs[_curr.Rd] = Regs[_curr.Rs1] >> (Regs[_curr.Rs2] & 0b11111);
     }
 
     void OR() {
-        Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] | Regs[_fields.rs2];
+        Regs[_curr.Rd] = Regs[_curr.Rs1] | Regs[_curr.Rs2];
     }
 
     void AND() {
-        Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] & Regs[_fields.rs2];
+        Regs[_curr.Rd] = Regs[_curr.Rs1] & Regs[_curr.Rs2];
     }
 
     void SUB() {
-        Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] - Regs[_fields.rs2];
+        Regs[_curr.Rd] = Regs[_curr.Rs1] - Regs[_curr.Rs2];
     }
 
     void ECALL() {
@@ -328,17 +351,17 @@ class RISCVSystem {
     }
 
     void CSRRW() {
-        int temp = Regs[_fields.rs1_uimm];
+        int temp = Regs[_curr.Rs1];
         
-        if(_fields.rd_imm5 != 0) {
-            if(!_csrs.read(_imm, ref Regs[_fields.rd_imm5])) {
+        if(_curr.Rd != 0) {
+            if(!_csrs.read(_curr.Imm, ref Regs[_curr.Rd])) {
                 Exception(McauseException.CODE_EX_ILLEGAL_INST);
                 return;
             }
         }
         
-        if(_fields.rs1_uimm != 0) {
-            if(!_csrs.write(_imm, temp)) {
+        if(_curr.Rs1 != 0) {
+            if(!_csrs.write(_curr.Imm, temp)) {
                 Exception(McauseException.CODE_EX_ILLEGAL_INST);
                 return;
             }
@@ -346,17 +369,17 @@ class RISCVSystem {
     }
 
     void CSRRS() {
-        int temp = Regs[_fields.rs1_uimm];
+        int temp = Regs[_curr.Rs1];
 
-        if(_fields.rd_imm5 != 0) {
-            if(!_csrs.read(_imm, ref Regs[_fields.rd_imm5])) {
+        if(_curr.Rd != 0) {
+            if(!_csrs.read(_curr.Imm, ref Regs[_curr.Rd])) {
                 Exception(McauseException.CODE_EX_ILLEGAL_INST);
                 return;
             }
         }
 
-        if(_fields.rs1_uimm != 0) {
-            if(!_csrs.set(_imm, temp)) {
+        if(_curr.Rs1 != 0) {
+            if(!_csrs.set(_curr.Imm, temp)) {
                 Exception(McauseException.CODE_EX_ILLEGAL_INST);
                 return;
             }
@@ -364,17 +387,17 @@ class RISCVSystem {
     }
 
     void CSRRC() {
-        int temp = Regs[_fields.rs1_uimm];
+        int temp = Regs[_curr.Rs1];
 
-        if(_fields.rd_imm5 != 0) {
-            if(!_csrs.read(_imm, ref Regs[_fields.rd_imm5])) {
+        if(_curr.Rd != 0) {
+            if(!_csrs.read(_curr.Imm, ref Regs[_curr.Rd])) {
                 Exception(McauseException.CODE_EX_ILLEGAL_INST);
                 return;
             }
         }
 
-        if(_fields.rs1_uimm != 0) {
-            if(!_csrs.clear(_imm, temp)) {
+        if(_curr.Rs1 != 0) {
+            if(!_csrs.clear(_curr.Imm, temp)) {
                 Exception(McauseException.CODE_EX_ILLEGAL_INST);
                 return;
             }
@@ -382,15 +405,15 @@ class RISCVSystem {
     }
 
     void CSRRWI() {
-        if(_fields.rd_imm5 != 0) {
-            if(!_csrs.read(_imm, ref Regs[_fields.rd_imm5])) {
+        if(_curr.Rd != 0) {
+            if(!_csrs.read(_curr.Imm, ref Regs[_curr.Rd])) {
                 Exception(McauseException.CODE_EX_ILLEGAL_INST);
                 return;
             }
         }
 
-        if(_fields.rs1_uimm != 0) {
-            if(!_csrs.write(_imm, _fields.rs1_uimm)) {
+        if(_curr.Rs1 != 0) {
+            if(!_csrs.write(_curr.Imm, _curr.Rs1)) {
                 Exception(McauseException.CODE_EX_ILLEGAL_INST);
                 return;
             }
@@ -398,15 +421,15 @@ class RISCVSystem {
     }
 
     void CSRRSI() {
-        if(_fields.rd_imm5 != 0) {
-            if(!_csrs.read(_imm, ref Regs[_fields.rd_imm5])) {
+        if(_curr.Rd != 0) {
+            if(!_csrs.read(_curr.Imm, ref Regs[_curr.Rd])) {
                 Exception(McauseException.CODE_EX_ILLEGAL_INST);
                 return;
             }
         }
 
-        if(_fields.rs1_uimm != 0) {
-            if(!_csrs.set(_imm, _fields.rs1_uimm)) {
+        if(_curr.Rs1 != 0) {
+            if(!_csrs.set(_curr.Imm, _curr.Rs1)) {
                 Exception(McauseException.CODE_EX_ILLEGAL_INST);
                 return;
             }
@@ -414,15 +437,15 @@ class RISCVSystem {
     }
 
     void CSRRCI() {
-        if(_fields.rd_imm5 != 0) {
-            if(!_csrs.read(_imm, ref Regs[_fields.rd_imm5])) {
+        if(_curr.Rd != 0) {
+            if(!_csrs.read(_curr.Imm, ref Regs[_curr.Rd])) {
                 Exception(McauseException.CODE_EX_ILLEGAL_INST);
                 return;
             }
         }
 
-        if(_fields.rs1_uimm != 0) {
-            if(!_csrs.clear(_imm, _fields.rs1_uimm)) {
+        if(_curr.Rs1 != 0) {
+            if(!_csrs.clear(_curr.Imm, _curr.Rs1)) {
                 Exception(McauseException.CODE_EX_ILLEGAL_INST);
                 return;
             }
@@ -430,60 +453,60 @@ class RISCVSystem {
     }
 
     void MUL() {
-        Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] * Regs[_fields.rs2];
+        Regs[_curr.Rd] = Regs[_curr.Rs1] * Regs[_curr.Rs2];
     }
 
     void MULH() {
-        long product = (long)Regs[_fields.rs1_uimm] * (long)Regs[_fields.rs2];
-        Regs[_fields.rd_imm5] = (int)(product >> 32);
+        long product = (long)Regs[_curr.Rs1] * (long)Regs[_curr.Rs2];
+        Regs[_curr.Rd] = (int)(product >> 32);
     }
 
     void MULHSU() {
-        long product = (long)Regs[_fields.rs1_uimm] * (long)(uint)Regs[_fields.rs2];
-        Regs[_fields.rd_imm5] = (int)(product >> 32);
+        long product = (long)Regs[_curr.Rs1] * (long)(uint)Regs[_curr.Rs2];
+        Regs[_curr.Rd] = (int)(product >> 32);
     }
 
     void MULHU() {
-        ulong product = (ulong)(uint)Regs[_fields.rs1_uimm] * (ulong)(uint)Regs[_fields.rs2];
-        Regs[_fields.rd_imm5] = (int)(product >> 32);
+        ulong product = (ulong)(uint)Regs[_curr.Rs1] * (ulong)(uint)Regs[_curr.Rs2];
+        Regs[_curr.Rd] = (int)(product >> 32);
     }
 
     void DIV() {
-        if(Regs[_fields.rs2] == 0) {
-            Regs[_fields.rd_imm5] = ~0;
-        } else if(Regs[_fields.rs1_uimm] == Int32.MinValue && Regs[_fields.rs2] == -1) {
-            Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm];
+        if(Regs[_curr.Rs2] == 0) {
+            Regs[_curr.Rd] = ~0;
+        } else if(Regs[_curr.Rs1] == Int32.MinValue && Regs[_curr.Rs2] == -1) {
+            Regs[_curr.Rd] = Regs[_curr.Rs1];
         } else {
-            Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] / Regs[_fields.rs2];
+            Regs[_curr.Rd] = Regs[_curr.Rs1] / Regs[_curr.Rs2];
         }
     }
 
     void DIVU() {
 
-        if(Regs[_fields.rs2] == 0) {
-            Regs[_fields.rd_imm5] = ~0;
+        if(Regs[_curr.Rs2] == 0) {
+            Regs[_curr.Rd] = ~0;
         } else {
-            Regs[_fields.rd_imm5] = (int)((uint)Regs[_fields.rs1_uimm] / (uint)Regs[_fields.rs2]);
+            Regs[_curr.Rd] = (int)((uint)Regs[_curr.Rs1] / (uint)Regs[_curr.Rs2]);
         }
     }
 
     void REM() {
 
-        if(Regs[_fields.rs2] == 0) {
-            Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm];
-        } else if(Regs[_fields.rs1_uimm] == Int32.MinValue && Regs[_fields.rs2] == -1) {
-            Regs[_fields.rd_imm5] = 0;
+        if(Regs[_curr.Rs2] == 0) {
+            Regs[_curr.Rd] = Regs[_curr.Rs1];
+        } else if(Regs[_curr.Rs1] == Int32.MinValue && Regs[_curr.Rs2] == -1) {
+            Regs[_curr.Rd] = 0;
         } else {
-            Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm] % Regs[_fields.rs2];
+            Regs[_curr.Rd] = Regs[_curr.Rs1] % Regs[_curr.Rs2];
         }
     }
 
     void REMU() {
 
-        if(Regs[_fields.rs2] == 0) {
-            Regs[_fields.rd_imm5] = Regs[_fields.rs1_uimm];
+        if(Regs[_curr.Rs2] == 0) {
+            Regs[_curr.Rd] = Regs[_curr.Rs1];
         } else {
-            Regs[_fields.rd_imm5] = (int)((uint)Regs[_fields.rs1_uimm] % (uint)Regs[_fields.rs2]);
+            Regs[_curr.Rd] = (int)((uint)Regs[_curr.Rs1] % (uint)Regs[_curr.Rs2]);
         }
     }
 
@@ -575,9 +598,9 @@ class RISCVSystem {
     }
 
     [Conditional("DEBUG")]
-    void LogInstruction(IType type, string name) {
+    void LogInstruction(Instruction inst) {
         if(_logger != null) {
-            _logger.LogInstruction(type, name, _fields, _imm);
+            _logger.LogInstruction(inst);
         }
     }
 
@@ -656,90 +679,103 @@ class RISCVSystem {
 
             if((Pc & 0b11) != 0) {
                 Exception(McauseException.CODE_EX_INST_MISALIGNED);
-            } else if(Pc < 0 || Pc > Memory.Length - 4) {
+            } if(Pc < 0 || Pc >= (Instructions.Length * 4)) {
                 Exception(McauseException.CODE_EX_INST_ACCESS);
             }
 
-            int inst = BitConverter.ToInt32(Memory, Pc);
-            Decode(inst);
+            Instruction? inst = Instructions[Pc / 4];
+
+            if(inst != null) {
+                _curr = inst;
+                LogInstruction(_curr);
+                _curr.Handler();
+            } else {
+                Exception(McauseException.CODE_EX_ILLEGAL_INST);
+            }
             
             Pc = _pcNext;
             _cycles++;
         }
     }
 
-    void Exec(Action f, IType type, bool signExtend = true) {
+    void Exec(Action f, IType type, int idx, bool signExtend = true) {
         _handled = true;
+        Instructions[idx] = new Instruction(f);
+        ref Instruction inst = ref Instructions[idx];
+
+        inst.Type = type;
 
         switch(type) {
             case IType.R:
+                inst.Rd = _fields.rd_imm5;
+                inst.Rs1 = _fields.rs1_uimm;
+                inst.Rs2 = _fields.rs2;
                 break;
             case IType.I:
-                _imm = SignExtend(_fields.imm12, 12);
+                inst.Rd = _fields.rd_imm5;
+                inst.Rs1 = _fields.rs1_uimm;
+                inst.Imm = SignExtend(_fields.imm12, 12);
                 break;
             case IType.S:
-                _imm = _fields.funct7_imm7 << 5 | _fields.rd_imm5;
-                _imm = SignExtend(_imm, 12);
+                inst.Rs1 = _fields.rs1_uimm;
+                inst.Rs2 = _fields.rs2;
+                inst.Imm = SignExtend(_fields.funct7_imm7 << 5 | _fields.rd_imm5, 12);
                 break;
             case IType.B:
-                _imm = ((_fields.funct7_imm7 & 0b1000000) << 6) | ((_fields.rd_imm5 & 0b1) << 11) | ((_fields.funct7_imm7 & 0b0111111) << 5) | (_fields.rd_imm5 & 0b11110);
-                _imm = SignExtend(_imm, 13);
+                inst.Rs1 = _fields.rs1_uimm;
+                inst.Rs2 = _fields.rs2;
+                inst.Imm = SignExtend(((_fields.funct7_imm7 & 0b1000000) << 6) | ((_fields.rd_imm5 & 0b1) << 11) | ((_fields.funct7_imm7 & 0b0111111) << 5) | (_fields.rd_imm5 & 0b11110), 13);
                 break;
             case IType.U:
-                _imm = _fields.imm20;
+                inst.Rd = _fields.rd_imm5;
+                inst.Imm = _fields.imm20;
                 break;
             case IType.J:
-                _imm = ((_fields.imm20 & (1 << 19)) << 1) | ((_fields.imm20 & (1 << 8)) << 3) | ((_fields.imm20 & 0xFF) << 12) | ((_fields.imm20 & 0b01111111111000000000) >> 8);
-                _imm = SignExtend(_imm, 21);
+                inst.Rd = _fields.rd_imm5;
+                inst.Imm = SignExtend(((_fields.imm20 & (1 << 19)) << 1) | ((_fields.imm20 & (1 << 8)) << 3) | ((_fields.imm20 & 0xFF) << 12) | ((_fields.imm20 & 0b01111111111000000000) >> 8), 21);
                 break;
             default:
                 _handled = false;
                 break;
         }
-
-        LogInstruction(type, f.Method.Name.ToLower());
-
-        if(_handled) {
-            f();
-        }
     }
 
-    void Decode(int x) {
-        _fields = DecodeFields(x);
+    void Decode(int inst, int idx) {
+        _fields = DecodeFields(inst);
         _handled = false;
 
         switch(_fields.opcode) {
             case 0b0110111:
-                Exec(LUI, IType.U, false);
+                Exec(LUI, IType.U, idx, false);
                 break;
             case 0b0010111:
-                Exec(AUIPC, IType.U);
+                Exec(AUIPC, IType.U, idx);
                 break;
             case 0b1101111:
-                Exec(JAL, IType.J);
+                Exec(JAL, IType.J, idx);
                 break;
             case 0b1100111:
-                Exec(JALR, IType.I);
+                Exec(JALR, IType.I, idx);
                 break;
             case 0b1100011:
                 switch(_fields.funct3) {
                     case 0b000:
-                        Exec(BEQ, IType.B);
+                        Exec(BEQ, IType.B, idx);
                         break;
                     case 0b001:
-                        Exec(BNE, IType.B);
+                        Exec(BNE, IType.B, idx);
                         break;
                     case 0b100:
-                        Exec(BLT, IType.B);
+                        Exec(BLT, IType.B, idx);
                         break;
                     case 0b101:
-                        Exec(BGE, IType.B);
+                        Exec(BGE, IType.B, idx);
                         break;
                     case 0b110:
-                        Exec(BLTU, IType.B);
+                        Exec(BLTU, IType.B, idx);
                         break;
                     case 0b111:
-                        Exec(BGEU, IType.B);
+                        Exec(BGEU, IType.B, idx);
                         break;
                 }
 
@@ -747,19 +783,19 @@ class RISCVSystem {
             case 0b0000011:
                 switch(_fields.funct3) {
                     case 0b000:
-                        Exec(LB, IType.I);
+                        Exec(LB, IType.I, idx);
                         break;
                     case 0b001:
-                        Exec(LH, IType.I);
+                        Exec(LH, IType.I, idx);
                         break;
                     case 0b010:
-                        Exec(LW, IType.I);
+                        Exec(LW, IType.I, idx);
                         break;
                     case 0b100:
-                        Exec(LBU, IType.I);
+                        Exec(LBU, IType.I, idx);
                         break;
                     case 0b101:
-                        Exec(LHU, IType.I);
+                        Exec(LHU, IType.I, idx);
                         break;
                 }
 
@@ -767,13 +803,13 @@ class RISCVSystem {
             case 0b0100011:
                 switch(_fields.funct3) {
                     case 0b000:
-                        Exec(SB, IType.S);
+                        Exec(SB, IType.S, idx);
                         break;
                     case 0b001:
-                        Exec(SH, IType.S);
+                        Exec(SH, IType.S, idx);
                         break;
                     case 0b010:
-                        Exec(SW, IType.S);
+                        Exec(SW, IType.S, idx);
                         break;
                 }
 
@@ -781,33 +817,33 @@ class RISCVSystem {
             case 0b0010011:
                 switch(_fields.funct3) {
                     case 0b000:
-                        Exec(ADDI, IType.I);
+                        Exec(ADDI, IType.I, idx);
                         break;
                     case 0b010:
-                        Exec(SLTI, IType.I);
+                        Exec(SLTI, IType.I, idx);
                         break;
                     case 0b011:
-                        Exec(SLTIU, IType.I);
+                        Exec(SLTIU, IType.I, idx);
                         break;
                     case 0b100:
-                        Exec(XORI, IType.I);
+                        Exec(XORI, IType.I, idx);
                         break;
                     case 0b110:
-                        Exec(ORI, IType.I);
+                        Exec(ORI, IType.I, idx);
                         break;
                     case 0b111:
-                        Exec(ANDI, IType.I);
+                        Exec(ANDI, IType.I, idx);
                         break;
                     case 0b001:
-                        Exec(SLLI, IType.I);
+                        Exec(SLLI, IType.I, idx);
                         break;
                     case 0b101:
                         switch(_fields.funct7_imm7) {
                             case 0b0:
-                                Exec(SRLI, IType.I);
+                                Exec(SRLI, IType.I, idx);
                                 break;
                             default:
-                                Exec(SRAI, IType.I);
+                                Exec(SRAI, IType.I, idx);
                                 break;
                         }
 
@@ -820,28 +856,28 @@ class RISCVSystem {
                     case 0b0000000:
                         switch(_fields.funct3) {
                             case 0b000:
-                                Exec(ADD, IType.R);
+                                Exec(ADD, IType.R, idx);
                                 break;
                             case 0b001:
-                                Exec(SLL, IType.R);
+                                Exec(SLL, IType.R, idx);
                                 break;
                             case 0b010:
-                                Exec(SLT, IType.R);
+                                Exec(SLT, IType.R, idx);
                                 break;
                             case 0b011:
-                                Exec(SLTU, IType.R);
+                                Exec(SLTU, IType.R, idx);
                                 break;
                             case 0b100:
-                                Exec(XOR, IType.R);
+                                Exec(XOR, IType.R, idx);
                                 break;
                             case 0b101:
-                                Exec(SRL, IType.R);
+                                Exec(SRL, IType.R, idx);
                                 break;
                             case 0b110:
-                                Exec(OR, IType.R);
+                                Exec(OR, IType.R, idx);
                                 break;
                             case 0b111:
-                                Exec(AND, IType.R);
+                                Exec(AND, IType.R, idx);
                                 break;
                         }
 
@@ -849,28 +885,28 @@ class RISCVSystem {
                     case 0b0000001:
                         switch(_fields.funct3) {
                             case 0b000:
-                                Exec(MUL, IType.R);
+                                Exec(MUL, IType.R, idx);
                                 break;
                             case 0b001:
-                                Exec(MULH, IType.R);
+                                Exec(MULH, IType.R, idx);
                                 break;
                             case 0b010:
-                                Exec(MULHSU, IType.R);
+                                Exec(MULHSU, IType.R, idx);
                                 break;
                             case 0b011:
-                                Exec(MULHU, IType.R);
+                                Exec(MULHU, IType.R, idx);
                                 break;
                             case 0b100:
-                                Exec(DIV, IType.R);
+                                Exec(DIV, IType.R, idx);
                                 break;
                             case 0b101:
-                                Exec(DIVU, IType.R);
+                                Exec(DIVU, IType.R, idx);
                                 break;
                             case 0b110:
-                                Exec(REM, IType.R);
+                                Exec(REM, IType.R, idx);
                                 break;
                             case 0b111:
-                                Exec(REMU, IType.R);
+                                Exec(REMU, IType.R, idx);
                                 break;
                         }
 
@@ -878,10 +914,10 @@ class RISCVSystem {
                     case 0b0100000:
                         switch(_fields.funct3) {
                             case 0b000:
-                                Exec(SUB, IType.R);
+                                Exec(SUB, IType.R, idx);
                                 break;
                             case 0b101:
-                                Exec(SRA, IType.R);
+                                Exec(SRA, IType.R, idx);
                                 break;
                         }
 
@@ -907,43 +943,38 @@ class RISCVSystem {
                     case 0b000:
                         switch(_fields.imm12) {
                             case 0b000000000000:
-                                Exec(ECALL, IType.I);
+                                Exec(ECALL, IType.I, idx);
                                 break;
                             case 0b000000000001:
-                                Exec(EBREAK, IType.I);
+                                Exec(EBREAK, IType.I, idx);
                                 break;
                             case 0b001100000010:
-                                Exec(MRET, IType.I);
+                                Exec(MRET, IType.I, idx);
                                 break;
                         }
 
                         break;
                     case 0b001:
-                        Exec(CSRRW, IType.I, false);
+                        Exec(CSRRW, IType.I, idx, false);
                         break;
                     case 0b010:
-                        Exec(CSRRS, IType.I, false);
+                        Exec(CSRRS, IType.I, idx, false);
                         break;
                     case 0b011: 
-                        Exec(CSRRC, IType.I, false);
+                        Exec(CSRRC, IType.I, idx, false);
                         break;
                     case 0b101: 
-                        Exec(CSRRWI, IType.I, false);
+                        Exec(CSRRWI, IType.I, idx, false);
                         break;
                     case 0b110: 
-                        Exec(CSRRSI, IType.I, false);
+                        Exec(CSRRSI, IType.I, idx, false);
                         break;
                     case 0b111: 
-                        Exec(CSRRCI, IType.I, false);
+                        Exec(CSRRCI, IType.I, idx, false);
                         break;
                 }
 
                 break;
-        }
-
-        if(!_handled) {
-            Exception(McauseException.CODE_EX_ILLEGAL_INST);
-            return;
         }
     }
 }
